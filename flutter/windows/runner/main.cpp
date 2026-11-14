@@ -10,6 +10,7 @@
 #include "win32_desktop.h"
 #include "flutter_window.h"
 #include "utils.h"
+#include "service_control.h"
 
 typedef char** (*FUNC_RUSTDESK_CORE_MAIN)(int*);
 typedef void (*FUNC_RUSTDESK_FREE_ARGS)( char**, int);
@@ -23,6 +24,9 @@ const wchar_t* getWindowClassName();
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command)
 {
+  if (auto result = service_control::HandleCommand(command_line)) {
+    return static_cast<int>(*result);
+  }
   HINSTANCE hInstance = LoadLibraryA("librustdesk.dll");
   if (!hInstance)
   {
@@ -104,6 +108,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     }
     if (!allow_multiple_instances) {
       if (!command_line_arguments.empty()) {
+        // The process launched by the browser owns the foreground permission.
+        // Transfer it to the existing RustDesk process before dispatching the
+        // URI so that it can bring an existing session to the foreground.
+        DWORD pid = 0;
+        ::GetWindowThreadProcessId(hwnd, &pid);
+        if (pid != 0) {
+          ::AllowSetForegroundWindow(pid);
+        }
         // Dispatch command line arguments
         DispatchToUniLinksDesktop(hwnd);
       } else {
